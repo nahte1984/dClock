@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>dClock | v1.4</title>
+    <title>dClock | v1.5</title>
     
     <!-- 引入 Google Font: Zalando Sans Expanded Black 900 -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -28,7 +28,7 @@
             position: absolute;
             top: 0; 
             left: 0;
-            font-size: 77px; /* 依照需求改為 113px */
+            /* 移除了固定的 font-size，改由 JS 動態生成 */
             color: #ff25a0;
             letter-spacing: -0.075em; /* 縮小字距 */
             white-space: nowrap;
@@ -90,6 +90,7 @@
         const boxes = []; // 儲存 DOM 元素與物理 Body 的對應關係
         let render, runner;
         let videoReady = false; // 追蹤相機是否就緒
+        let vacuumActive = false; // 追蹤「大引力黑洞」是否正在作動
 
         const startBtn = document.getElementById('start-btn');
         const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -202,6 +203,8 @@
 
         function setupGyroscope() {
             window.addEventListener('deviceorientation', (event) => {
+                if (vacuumActive) return; // 若大引力黑洞作用中，暫停陀螺儀干擾
+
                 const gamma = event.gamma; // 左右傾斜
                 const beta = event.beta;   // 前後傾斜
 
@@ -212,6 +215,42 @@
                     engine.gravity.y = Math.max(-1, Math.min(1, beta / 45)); 
                 }
             });
+        }
+
+        // 吸塵器/黑洞功能：將當前所有數字轉為感測器並用強大重力吸出畫面外
+        function suckAllDown() {
+            vacuumActive = true;
+
+            // 臨時將世界引力放大，並強制垂直向下
+            engine.gravity.y = 3.5; 
+            engine.gravity.x = 0;
+
+            boxes.forEach(box => {
+                if (!box.isVacuumed) {
+                    box.isVacuumed = true; // 標記為即將被清除
+                    // isSensor: true 讓剛體可以穿過牆壁和地板，不受碰撞影響
+                    Matter.Body.set(box.body, 'isSensor', true);
+                    // 給予初始向下的衝力
+                    Matter.Body.setVelocity(box.body, { x: 0, y: 25 });
+                }
+            });
+
+            // 1.5 秒後恢復正常重力
+            setTimeout(() => {
+                vacuumActive = false;
+                engine.gravity.y = 1; // 回復預設重力 1 (陀螺儀很快會再蓋過它)
+            }, 1500);
+
+            // 2.5 秒後將已經掉出畫面的物件從記憶體徹底清除
+            setTimeout(() => {
+                for (let i = boxes.length - 1; i >= 0; i--) {
+                    if (boxes[i].isVacuumed) {
+                        Composite.remove(world, boxes[i].body);
+                        boxes[i].el.remove();
+                        boxes.splice(i, 1);
+                    }
+                }
+            }, 2500);
         }
 
         // 處理畫面載入時的初始時間掉落
@@ -252,15 +291,21 @@
             setInterval(() => {
                 const now = new Date();
                 const drops = [];
+                const currentSec = now.getSeconds();
 
                 // 如果秒數改變了
-                if (now.getSeconds() !== lastTime.getSeconds()) {
+                if (currentSec !== lastTime.getSeconds()) {
+                    // 每 20 秒觸發一次超級重力吸收！ (00, 20, 40)
+                    if (currentSec % 20 === 0) {
+                        suckAllDown();
+                    }
+
                     // 如果分數也改變了，加入分數
                     if (now.getMinutes() !== lastTime.getMinutes()) {
                         drops.push(now.getMinutes().toString().padStart(2, '0'));
                     }
                     // 加入秒數
-                    drops.push(now.getSeconds().toString().padStart(2, '0'));
+                    drops.push(currentSec.toString().padStart(2, '0'));
                     lastTime = now;
                 }
 
@@ -324,6 +369,12 @@
             const el = document.createElement('div');
             el.className = 'falling-text';
             el.innerText = text;
+            
+            // 依照當下的秒數計算字級大小 (0秒時 31px，59秒時 90px)
+            const currentSec = new Date().getSeconds();
+            const dynamicFontSize = 31 + currentSec;
+            el.style.fontSize = `${dynamicFontSize}px`;
+
             document.body.appendChild(el);
 
             // 取得該文字在 DOM 中的實際寬高 (包含 padding)
@@ -359,8 +410,8 @@
             Composite.add(world, body);
             boxes.push({ el, body, width, height });
 
-            // 效能保護：如果畫面上的物件超過 50 個，刪除最舊的
-            if (boxes.length > 50) {
+            // 效能保護：超過 100 個時進行常規的清理 (通常因為 20 秒大清空，不會達到這個數量)
+            if (boxes.length > 100) {
                 const oldest = boxes.shift();
                 Composite.remove(world, oldest.body);
                 oldest.el.remove();
