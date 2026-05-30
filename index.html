@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Vibe Time Drop</title>
+    
+    <!-- 引入 Google Font: Poppins Medium 500 -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500&display=swap" rel="stylesheet">
+    
+    <!-- 引入 Matter.js 物理引擎 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #d5d5d3; /* 更新為使用者指定的背景顏色 */
+            font-family: 'Poppins', sans-serif;
+            font-weight: 500;
+            touch-action: none; /* 防止手機端拖曳時發生網頁滑動 */
+        }
+
+        .falling-text {
+            position: absolute;
+            top: 0; 
+            left: 0;
+            font-size: 31px;
+            color: #ff25a0;
+            white-space: nowrap;
+            user-select: none;
+            line-height: 1;
+            padding: 4px 8px; /* 增加一點 padding 讓物理碰撞框稍微大於文字，視覺上更舒服 */
+            pointer-events: none; /* 讓滑鼠事件穿透，交由底層的 Canvas 處理物理拖曳 */
+            will-change: transform;
+        }
+
+        /* 隱藏但覆蓋全螢幕的 Canvas，專門用來捕捉 Matter.js 的滑鼠/觸控事件 */
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 10;
+            opacity: 0; 
+        }
+
+        /* 啟動按鈕（為了獲取手機陀螺儀權限所必須） */
+        #start-btn {
+            position: absolute;
+            top: 50%; 
+            left: 50%;
+            transform: translate(-50%, -50%);
+            padding: 15px 40px;
+            font-size: 24px;
+            background: #ff25a0;
+            color: white;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            z-index: 100;
+            font-family: 'Poppins', sans-serif;
+            font-weight: 500;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            transition: transform 0.2s;
+        }
+        
+        #start-btn:active {
+            transform: translate(-50%, -50%) scale(0.95);
+        }
+    </style>
+</head>
+<body>
+
+    <button id="start-btn">Start Vibe</button>
+
+    <script>
+        const Engine = Matter.Engine,
+              Render = Matter.Render,
+              Runner = Matter.Runner,
+              Bodies = Matter.Bodies,
+              Composite = Matter.Composite,
+              Mouse = Matter.Mouse,
+              MouseConstraint = Matter.MouseConstraint;
+
+        const engine = Engine.create();
+        const world = engine.world;
+        const boxes = []; // 儲存 DOM 元素與物理 Body 的對應關係
+        let render, runner;
+
+        const startBtn = document.getElementById('start-btn');
+        const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+        // 綁定啟動按鈕
+        startBtn.addEventListener('click', async () => {
+            // 請求 iOS 13+ 的陀螺儀權限
+            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                try {
+                    const permission = await DeviceOrientationEvent.requestPermission();
+                    if (permission !== 'granted') {
+                        console.warn('陀螺儀權限未授權');
+                    }
+                } catch (e) {
+                    console.error(e);
+                }
+            }
+            startBtn.style.display = 'none';
+            init();
+        });
+
+        function init() {
+            // 確保字型載入完成後再生成物理框，避免尺寸計算錯誤
+            document.fonts.ready.then(() => {
+                setupMatter();
+                setupBoundaries();
+                setupMouseInteraction();
+                setupGyroscope();
+
+                runner = Runner.create();
+                Runner.run(runner, engine);
+
+                requestAnimationFrame(renderLoop);
+                startInitialDrops();
+            });
+        }
+
+        function setupMatter() {
+            render = Render.create({
+                element: document.body,
+                engine: engine,
+                options: {
+                    width: window.innerWidth,
+                    height: window.innerHeight,
+                    wireframes: false,
+                    background: 'transparent'
+                }
+            });
+            Render.run(render);
+        }
+
+        let floor, leftWall, rightWall;
+        function setupBoundaries() {
+            const w = window.innerWidth;
+            const h = window.innerHeight;
+            const thick = 100; // 邊界厚度
+
+            // 建立地板與左右牆壁，設定 isStatic: true 讓它們不會掉落
+            floor = Bodies.rectangle(w / 2, h + thick / 2, w + 200, thick, { isStatic: true });
+            leftWall = Bodies.rectangle(-thick / 2, h / 2, thick, h * 2, { isStatic: true });
+            rightWall = Bodies.rectangle(w + thick / 2, h / 2, thick, h * 2, { isStatic: true });
+            
+            Composite.add(world, [floor, leftWall, rightWall]);
+        }
+
+        // 監聽視窗大小改變，即時更新邊界位置
+        window.addEventListener('resize', () => {
+            if (!render) return;
+            const w = window.innerWidth;
+            const h = window.innerHeight;
+            render.canvas.width = w;
+            render.canvas.height = h;
+            
+            Matter.Body.setPosition(floor, { x: w / 2, y: h + 50 });
+            Matter.Body.setPosition(leftWall, { x: -50, y: h / 2 });
+            Matter.Body.setPosition(rightWall, { x: w + 50, y: h / 2 });
+        });
+
+        function setupMouseInteraction() {
+            const mouse = Mouse.create(render.canvas);
+            const mouseConstraint = MouseConstraint.create(engine, {
+                mouse: mouse,
+                constraint: {
+                    stiffness: 0.2,
+                    render: { visible: false }
+                }
+            });
+            Composite.add(world, mouseConstraint);
+            render.mouse = mouse; // 保持滑鼠位置與渲染同步
+        }
+
+        function setupGyroscope() {
+            window.addEventListener('deviceorientation', (event) => {
+                const gamma = event.gamma; // 左右傾斜
+                const beta = event.beta;   // 前後傾斜
+
+                if (gamma !== null && beta !== null) {
+                    // 根據傾斜角度動態調整重力向量 (限制在 -1 到 1 之間)
+                    engine.gravity.x = Math.max(-1, Math.min(1, gamma / 45));
+                    // 考慮到平常拿手機的角度，適度調整 beta 基準
+                    engine.gravity.y = Math.max(-1, Math.min(1, beta / 45)); 
+                }
+            });
+        }
+
+        // 處理畫面載入時的初始時間掉落
+        function startInitialDrops() {
+            const d = new Date();
+            let h = d.getHours();
+            const ampm = h >= 12 ? 'PM' : 'AM';
+            h = h % 12;
+            h = h ? h : 12; // 12小時制處理
+            
+            const m = d.getMinutes().toString().padStart(2, '0');
+            const s = d.getSeconds().toString().padStart(2, '0');
+            const month = monthNames[d.getMonth()];
+            const date = d.getDate();
+
+            // 依據需求格式化初始字串陣列
+            const parts = [`${month} ${date}`, h.toString(), ":", m, ":", s, ampm];
+
+            let dropIndex = 0;
+            const dropInterval = setInterval(() => {
+                if (dropIndex < parts.length) {
+                    spawnTextBody(parts[dropIndex]);
+                    dropIndex++;
+                } else {
+                    clearInterval(dropInterval);
+                    startClock(); // 初始掉落完畢後，啟動時鐘機制
+                }
+            }, 350); // 每 350 毫秒掉落一個字
+        }
+
+        let lastTime;
+        function startClock() {
+            lastTime = new Date();
+            
+            // 每 100 毫秒檢查一次時間，確保精準度
+            setInterval(() => {
+                const now = new Date();
+                const drops = [];
+
+                // 如果秒數改變了
+                if (now.getSeconds() !== lastTime.getSeconds()) {
+                    // 如果分數也改變了，加入分數
+                    if (now.getMinutes() !== lastTime.getMinutes()) {
+                        drops.push(now.getMinutes().toString().padStart(2, '0'));
+                    }
+                    // 加入秒數
+                    drops.push(now.getSeconds().toString().padStart(2, '0'));
+                    lastTime = now;
+                }
+
+                // 將變更的數字依序掉落
+                drops.forEach((text, i) => {
+                    setTimeout(() => {
+                        spawnTextBody(text);
+                    }, i * 300);
+                });
+
+            }, 100); 
+        }
+
+        // 生成單一個文字及其物理 Body
+        function spawnTextBody(text) {
+            const el = document.createElement('div');
+            el.className = 'falling-text';
+            el.innerText = text;
+            document.body.appendChild(el);
+
+            // 取得該文字在 DOM 中的實際寬高 (包含 padding)
+            const width = el.offsetWidth;
+            const height = el.offsetHeight;
+
+            // 隨機決定 X 軸生成位置，確保不會超出畫面
+            const margin = 20;
+            const maxX = Math.max(margin, window.innerWidth - width - margin);
+            const x = margin + Math.random() * (maxX - margin);
+            const y = -height - 50; // 從畫面上方邊界外掉落
+
+            // 建立 Matter.js 矩形物理剛體
+            const body = Bodies.rectangle(x + width / 2, y + height / 2, width, height, {
+                restitution: 0.7, // 彈性 (碰撞會彈跳)
+                friction: 0.1,    // 摩擦力
+                density: 0.002    // 密度
+            });
+
+            Composite.add(world, body);
+            boxes.push({ el, body, width, height });
+
+            // 效能保護：如果畫面上的物件超過 200 個，刪除最舊的，避免長時間運作導致瀏覽器卡頓
+            if (boxes.length > 200) {
+                const oldest = boxes.shift();
+                Composite.remove(world, oldest.body);
+                oldest.el.remove();
+            }
+        }
+
+        // 渲染迴圈：將 Matter.js 的物理坐標同步到 DOM 元素的 CSS transform
+        function renderLoop() {
+            boxes.forEach(box => {
+                const { x, y } = box.body.position;
+                const angle = box.body.angle;
+                // Matter.js 是以中心點為坐標，而 DOM 是以左上角為起點，所以需要平移寬高的一半
+                box.el.style.transform = `translate(${x - box.width / 2}px, ${y - box.height / 2}px) rotate(${angle}rad)`;
+            });
+            requestAnimationFrame(renderLoop);
+        }
+    </script>
+</body>
+</html>
