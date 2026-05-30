@@ -3,12 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>dClock | v1.2.2</title>
+    <title>dClock | v1.3.0</title>
     
-    <!-- 引入 Google Font: Poppins Medium 500 -->
+    <!-- 引入 Google Font: Zalando Sans Expanded Black 900 -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Zalando+Sans+Expanded:wght@900&display=swap" rel="stylesheet">
     
     <!-- 引入 Matter.js 物理引擎 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
@@ -19,8 +19,8 @@
             padding: 0;
             overflow: hidden;
             background-color: #d5d5d3; 
-            font-family: 'Poppins', sans-serif;
-            font-weight: 500;
+            font-family: 'Zalando Sans Expanded', sans-serif;
+            font-weight: 900;
             touch-action: none; /* 防止手機端拖曳時發生網頁滑動 */
         }
 
@@ -28,7 +28,7 @@
             position: absolute;
             top: 0; 
             left: 0;
-            font-size: 77px;
+            font-size: 113px; /* 依照需求改為 113px */
             color: #ff25a0;
             letter-spacing: -0.075em; /* 縮小字距 */
             white-space: nowrap;
@@ -208,8 +208,10 @@
             const month = monthNames[d.getMonth()];
             const date = d.getDate();
 
-            // 依據需求格式化初始字串陣列
-            const parts = [`${month} ${date}`, h.toString(), ":", m, ":", s, ampm];
+            // 依據新需求，分成日期、時間、AM/PM 三個部分
+            const dateString = `${month} ${date}`;
+            const timeString = `${h}:${m}:${s}`;
+            const parts = [dateString, timeString, ampm];
 
             let dropIndex = 0;
             const dropInterval = setInterval(() => {
@@ -220,7 +222,7 @@
                     clearInterval(dropInterval);
                     startClock(); // 初始掉落完畢後，啟動時鐘機制
                 }
-            }, 350); // 每 350 毫秒掉落一個字
+            }, 350); // 每 350 毫秒掉落一個字塊
         }
 
         let lastTime;
@@ -267,9 +269,9 @@
             // 隨機決定 X 軸生成位置，確保不會超出畫面
             const margin = 20;
             const maxX = Math.max(margin, window.innerWidth - width - margin);
-            const x = margin + Math.random() * (maxX - margin);
+            const x = margin + Math.random() * (Math.max(0, maxX - margin)); // 加上 Math.max 避免字體過長時出現負數
             
-            // 為了不讓字卡在「天花板」外側，改成從畫面內部頂端（y = 30）的地方生成
+            // 從畫面內部頂端（y = 30）的地方生成
             const y = 30; 
 
             // 建立 Matter.js 矩形物理剛體
@@ -282,8 +284,8 @@
             Composite.add(world, body);
             boxes.push({ el, body, width, height });
 
-            // 效能保護：如果畫面上的物件超過 200 個，刪除最舊的，避免長時間運作導致瀏覽器卡頓
-            if (boxes.length > 200) {
+            // 效能保護：如果畫面上的物件超過 50 個，刪除最舊的
+            if (boxes.length > 50) {
                 const oldest = boxes.shift();
                 Composite.remove(world, oldest.body);
                 oldest.el.remove();
