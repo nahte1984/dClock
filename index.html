@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>dClock | v1.3.1</title>
+    <title>dClock | v1.4</title>
     
     <!-- 引入 Google Font: Zalando Sans Expanded Black 900 -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -74,6 +74,7 @@
 <body>
 
     <button id="start-btn">🥲</button>
+    <video id="webcam" autoplay playsinline muted style="display: none;"></video>
 
     <script>
         const Engine = Matter.Engine,
@@ -88,12 +89,15 @@
         const world = engine.world;
         const boxes = []; // 儲存 DOM 元素與物理 Body 的對應關係
         let render, runner;
+        let videoReady = false; // 追蹤相機是否就緒
 
         const startBtn = document.getElementById('start-btn');
         const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
         // 綁定啟動按鈕
         startBtn.addEventListener('click', async () => {
+            startBtn.style.display = 'none'; // 立即隱藏按鈕避免重複點擊
+
             // 請求 iOS 13+ 的陀螺儀權限
             if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
                 try {
@@ -105,8 +109,23 @@
                     console.error(e);
                 }
             }
-            startBtn.style.display = 'none';
-            init();
+
+            // 請求前鏡頭相機權限
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+                const video = document.getElementById('webcam');
+                video.srcObject = stream;
+                
+                // 等待相機載入完成後啟動
+                video.onloadedmetadata = () => {
+                    video.play();
+                    videoReady = true;
+                    init();
+                };
+            } catch (err) {
+                console.error("相機權限遭拒絕或無相機設備:", err);
+                init(); // 若無相機，仍啟動物理引擎（使用預設粉紅色字體）
+            }
         });
 
         function init() {
@@ -255,6 +274,51 @@
             }, 100); 
         }
 
+        // 擷取相機特定區域畫面的函數
+        function getCameraSnapshot(x, y, w, h) {
+            if (!videoReady) return null;
+            const video = document.getElementById('webcam');
+            
+            // 建立暫時畫布模擬全螢幕
+            const snapCanvas = document.createElement('canvas');
+            snapCanvas.width = window.innerWidth;
+            snapCanvas.height = window.innerHeight;
+            const snapCtx = snapCanvas.getContext('2d');
+            
+            // 計算 Object-fit: cover 比例
+            const videoRatio = video.videoWidth / video.videoHeight;
+            const windowRatio = window.innerWidth / window.innerHeight;
+            let drawW, drawH, drawX, drawY;
+            if (windowRatio > videoRatio) {
+                drawW = window.innerWidth;
+                drawH = window.innerWidth / videoRatio;
+                drawX = 0;
+                drawY = (window.innerHeight - drawH) / 2;
+            } else {
+                drawW = window.innerHeight * videoRatio;
+                drawH = window.innerHeight;
+                drawX = (window.innerWidth - drawW) / 2;
+                drawY = 0;
+            }
+            
+            // 鏡像翻轉（前鏡頭習慣視覺）
+            snapCtx.translate(snapCanvas.width, 0);
+            snapCtx.scale(-1, 1);
+            snapCtx.drawImage(video, drawX, drawY, drawW, drawH);
+            snapCtx.setTransform(1, 0, 0, 1, 0, 0);
+            
+            // 建立裁切用的畫布
+            const cropCanvas = document.createElement('canvas');
+            cropCanvas.width = Math.max(1, Math.ceil(w));
+            cropCanvas.height = Math.max(1, Math.ceil(h));
+            const cropCtx = cropCanvas.getContext('2d');
+            
+            // 從全畫面截圖中，取出文字所在範圍的影像
+            cropCtx.drawImage(snapCanvas, x, y, w, h, 0, 0, w, h);
+            
+            return cropCanvas.toDataURL('image/jpeg', 0.9);
+        }
+
         // 生成單一個文字及其物理 Body
         function spawnTextBody(text) {
             const el = document.createElement('div');
@@ -269,10 +333,21 @@
             // 隨機決定 X 軸生成位置，確保不會超出畫面
             const margin = 20;
             const maxX = Math.max(margin, window.innerWidth - width - margin);
-            const x = margin + Math.random() * (Math.max(0, maxX - margin)); // 加上 Math.max 避免字體過長時出現負數
+            const x = margin + Math.random() * (Math.max(0, maxX - margin)); 
             
             // 從畫面內部頂端（y = 30）的地方生成
             const y = 30; 
+
+            // 若相機有畫面，將該區域的影像貼在文字表面
+            const imgData = getCameraSnapshot(x, y, width, height);
+            if (imgData) {
+                el.style.backgroundImage = `url(${imgData})`;
+                el.style.backgroundPosition = 'center';
+                el.style.backgroundSize = 'cover';
+                el.style.color = 'transparent'; // 讓文字本體變透明
+                el.style.webkitBackgroundClip = 'text'; // 讓背景只顯示在文字上
+                el.style.backgroundClip = 'text';
+            }
 
             // 建立 Matter.js 矩形物理剛體
             const body = Bodies.rectangle(x + width / 2, y + height / 2, width, height, {
