@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Vibe Time Drop</title>
+    <title>dClock | v1.2</title>
     
     <!-- 引入 Google Font: Poppins Medium 500 -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -18,7 +18,7 @@
             margin: 0;
             padding: 0;
             overflow: hidden;
-            background-color: #d5d5d3; /* 更新為使用者指定的背景顏色 */
+            background-color: #d5d5d3; 
             font-family: 'Poppins', sans-serif;
             font-weight: 500;
             touch-action: none; /* 防止手機端拖曳時發生網頁滑動 */
@@ -47,9 +47,33 @@
             z-index: 10;
             opacity: 0; 
         }
+
+        /* 啟動按鈕 */
+        #start-btn {
+            position: absolute;
+            top: 50%; 
+            left: 50%;
+            transform: translate(-50%, -50%);
+            padding: 15px 30px;
+            font-size: 40px; /* 加大表情符號 */
+            background: #ff25a0;
+            color: white;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            z-index: 100;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            transition: transform 0.2s;
+        }
+        
+        #start-btn:active {
+            transform: translate(-50%, -50%) scale(0.95);
+        }
     </style>
 </head>
 <body>
+
+    <button id="start-btn">🥲</button>
 
     <script>
         const Engine = Matter.Engine,
@@ -65,10 +89,23 @@
         const boxes = []; // 儲存 DOM 元素與物理 Body 的對應關係
         let render, runner;
 
+        const startBtn = document.getElementById('start-btn');
         const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-        // 網頁載入時直接啟動
-        window.addEventListener('DOMContentLoaded', () => {
+        // 綁定啟動按鈕
+        startBtn.addEventListener('click', async () => {
+            // 請求 iOS 13+ 的陀螺儀權限
+            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                try {
+                    const permission = await DeviceOrientationEvent.requestPermission();
+                    if (permission !== 'granted') {
+                        console.warn('陀螺儀權限未授權');
+                    }
+                } catch (e) {
+                    console.error(e);
+                }
+            }
+            startBtn.style.display = 'none';
             init();
         });
 
@@ -102,21 +139,22 @@
             Render.run(render);
         }
 
-        let floor, leftWall, rightWall;
+        let floor, ceiling, leftWall, rightWall;
         function setupBoundaries() {
             const w = window.innerWidth;
             const h = window.innerHeight;
             const thick = 100; // 邊界厚度
 
-            // 建立地板與左右牆壁，設定 isStatic: true 讓它們不會掉落
+            // 建立四周的牆壁，確保文字不會飛出畫面
             floor = Bodies.rectangle(w / 2, h + thick / 2, w + 200, thick, { isStatic: true });
+            ceiling = Bodies.rectangle(w / 2, -thick / 2, w + 200, thick, { isStatic: true }); // 新增天花板
             leftWall = Bodies.rectangle(-thick / 2, h / 2, thick, h * 2, { isStatic: true });
             rightWall = Bodies.rectangle(w + thick / 2, h / 2, thick, h * 2, { isStatic: true });
             
-            Composite.add(world, [floor, leftWall, rightWall]);
+            Composite.add(world, [floor, ceiling, leftWall, rightWall]);
         }
 
-        // 監聽視窗大小改變，即時更新邊界位置
+        // 監聽視窗大小改變，即時更新四周邊界位置
         window.addEventListener('resize', () => {
             if (!render) return;
             const w = window.innerWidth;
@@ -125,6 +163,7 @@
             render.canvas.height = h;
             
             Matter.Body.setPosition(floor, { x: w / 2, y: h + 50 });
+            Matter.Body.setPosition(ceiling, { x: w / 2, y: -50 });
             Matter.Body.setPosition(leftWall, { x: -50, y: h / 2 });
             Matter.Body.setPosition(rightWall, { x: w + 50, y: h / 2 });
         });
@@ -229,7 +268,9 @@
             const margin = 20;
             const maxX = Math.max(margin, window.innerWidth - width - margin);
             const x = margin + Math.random() * (maxX - margin);
-            const y = -height - 50; // 從畫面上方邊界外掉落
+            
+            // 為了不讓字卡在「天花板」外側，改成從畫面內部頂端（y = 30）的地方生成
+            const y = 30; 
 
             // 建立 Matter.js 矩形物理剛體
             const body = Bodies.rectangle(x + width / 2, y + height / 2, width, height, {
