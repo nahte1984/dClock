@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>dClock | v1.6</title>
+    <title>dClock | v1.7</title>
     
     <!-- 引入 Google Font: Zalando Sans Expanded Black 900 -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -362,6 +362,13 @@
                 friction: 0.1,    // 摩擦力
                 density: 0.002    // 密度
             });
+
+            // 給予隨機的初始左右推力與微小旋轉，打破生硬的垂直下墜
+            const randomVelocityX = (Math.random() - 0.5) * 12; // -6 到 +6 的隨機水平速度
+            Matter.Body.setVelocity(body, { x: randomVelocityX, y: 0 });
+            
+            const randomAngularVelocity = (Math.random() - 0.5) * 0.15; // 產生微小的旋轉效果
+            Matter.Body.setAngularVelocity(body, randomAngularVelocity);
 
             Composite.add(world, body);
             boxes.push({ el, body, width, height });
