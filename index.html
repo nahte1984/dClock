@@ -30,10 +30,11 @@
             left: 0;
             font-size: 31px;
             color: #ff25a0;
+            letter-spacing: -0.035em; /* 縮小字距 */
             white-space: nowrap;
             user-select: none;
             line-height: 1;
-            padding: 4px 8px; /* 增加一點 padding 讓物理碰撞框稍微大於文字，視覺上更舒服 */
+            padding: 4px 6px; /* 配合字距稍微調小物理框左右寬度 */
             pointer-events: none; /* 讓滑鼠事件穿透，交由底層的 Canvas 處理物理拖曳 */
             will-change: transform;
         }
@@ -46,35 +47,9 @@
             z-index: 10;
             opacity: 0; 
         }
-
-        /* 啟動按鈕（為了獲取手機陀螺儀權限所必須） */
-        #start-btn {
-            position: absolute;
-            top: 50%; 
-            left: 50%;
-            transform: translate(-50%, -50%);
-            padding: 15px 40px;
-            font-size: 24px;
-            background: #ff25a0;
-            color: white;
-            border: none;
-            border-radius: 12px;
-            cursor: pointer;
-            z-index: 100;
-            font-family: 'Poppins', sans-serif;
-            font-weight: 500;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-            transition: transform 0.2s;
-        }
-        
-        #start-btn:active {
-            transform: translate(-50%, -50%) scale(0.95);
-        }
     </style>
 </head>
 <body>
-
-    <button id="start-btn">Start Vibe</button>
 
     <script>
         const Engine = Matter.Engine,
@@ -90,23 +65,10 @@
         const boxes = []; // 儲存 DOM 元素與物理 Body 的對應關係
         let render, runner;
 
-        const startBtn = document.getElementById('start-btn');
         const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-        // 綁定啟動按鈕
-        startBtn.addEventListener('click', async () => {
-            // 請求 iOS 13+ 的陀螺儀權限
-            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-                try {
-                    const permission = await DeviceOrientationEvent.requestPermission();
-                    if (permission !== 'granted') {
-                        console.warn('陀螺儀權限未授權');
-                    }
-                } catch (e) {
-                    console.error(e);
-                }
-            }
-            startBtn.style.display = 'none';
+        // 網頁載入時直接啟動
+        window.addEventListener('DOMContentLoaded', () => {
             init();
         });
 
