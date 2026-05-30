@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>dClock | v1.7</title>
+    <title>dClock | v1.7.1</title>
     
     <!-- 引入 Google Font: Zalando Sans Expanded Black 900 -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -326,9 +326,9 @@
             el.className = 'falling-text';
             el.innerText = text;
             
-            // 依照當下的秒數計算字級大小 (0秒時 31px，59秒時 90px)
+            // 依照當下的秒數計算字級大小 (0秒時 13px，每增加一秒加2px，59秒時 131px)
             const currentSec = new Date().getSeconds();
-            const dynamicFontSize = 31 + currentSec;
+            const dynamicFontSize = 13 + (currentSec * 2);
             el.style.fontSize = `${dynamicFontSize}px`;
 
             document.body.appendChild(el);
